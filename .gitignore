@@ -1,0 +1,6 @@
+/target
+# Local runtime state (Pi, atl)
+.atl/
+.pi/
+# User-provided reference images, not part of the project
+/references/
