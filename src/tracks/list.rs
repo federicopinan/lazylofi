@@ -13,7 +13,8 @@ use super::Track;
 
 /// Represents a list of tracks that can be played.
 ///
-/// See the [README](https://github.com/talwat/lazylofi?tab=readme-ov-file#the-format) for more details about the format.
+/// See the [README](https://github.com/federicopinan/lazylofi?tab=readme-ov-file#custom-track-lists)
+/// for more details about the format.
 #[derive(Clone)]
 pub struct List {
     /// The "name" of the list, usually derived from a filename.

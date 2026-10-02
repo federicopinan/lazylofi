@@ -12,9 +12,9 @@ categories = [
     "multimedia::audio",
 ]
 keywords = ["lazylofi", "lofi", "synthwave", "ambient", "jazz", "music", "tui"]
-documentation = "https://github.com/talwat/lazylofi"
-homepage = "https://github.com/talwat/lazylofi"
-repository = "https://github.com/talwat/lazylofi"
+documentation = "https://github.com/federicopinan/lazylofi"
+homepage = "https://github.com/federicopinan/lazylofi"
+repository = "https://github.com/federicopinan/lazylofi"
 
 [features]
 mpris = ["dep:mpris-server"]

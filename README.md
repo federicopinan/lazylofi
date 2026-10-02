@@ -12,9 +12,6 @@ It ships with four built-in genres, a live genre picker, a per-track "frequency"
 that turns every track into its own little radio station, and an animated ocean
 gently rolling at the bottom of the screen.
 
-![example 1](media/example1.png)
-![example 2](media/example2.png)
-
 ## Features
 
 - **Vintage FM-style UI** — a frequency display, an analog dial, and an animated
@@ -41,13 +38,13 @@ gently rolling at the bottom of the screen.
 
 ## Why?
 
-lazylofi is a fork of [lowfi](https://github.com/talwat/lowfi), a project I
-really liked but which only shipped a single lofi stream that eventually
-stopped working. I wanted the same suckless feel but with more genres and a
-picker, so I don't have to remember which flag is which.
+Most terminal music players either want you to maintain a music library or
+pull from a streaming service that eventually breaks. lazylofi sidesteps both:
+it ships with hand-curated tracks that actually work, a transparent way to drop
+in your own, and enough buffering to survive a flaky network.
 
-It also buffers five full songs instead of parts of the same song, which makes
-it reasonably resilient to inconsistent networks.
+The goal is simplicity: no albums, no playlists you can't escape, no ads. Just
+music.
 
 ## Installing
 
@@ -89,7 +86,7 @@ Make sure `$HOME/.cargo/bin` is on your `$PATH`.
 ### Pre-built binaries
 
 Grab a binary for your platform from the
-[latest release](https://github.com/talwat/lazylofi/releases/latest) if you'd
+[latest release](https://github.com/federicopinan/lazylofi/releases/latest) if you'd
 rather skip the build.
 
 ### AUR
@@ -100,7 +97,7 @@ cargo or a release binary.
 ### From source
 
 ```sh
-git clone https://github.com/talwat/lazylofi
+git clone https://github.com/federicopinan/lazylofi
 cd lazylofi
 cargo build --release
 ./target/release/lazylofi
@@ -270,8 +267,8 @@ See [Custom Track Lists](#custom-track-lists) for the format.
 
 ## The `scrape` subcommand
 
-Inherited from lowfi. It dumps every link matching a given extension under a
-URL directory listing — useful for finding new MP3s to add to your lists.
+Dumps every link matching a given extension under a URL directory listing —
+useful for finding new MP3s to add to your lists.
 
 ```sh
 lazylofi scrape --base https://archive.org/download/some-collection/
@@ -288,11 +285,6 @@ All audio streamed by lazylofi comes from the
 public domain; please respect each item's individual license on `archive.org`
 if you plan anything beyond personal use.
 
-> **Why not Lofi Girl?** The original `lowfi` upstream pulled tracks from
-> `lofigirl.com`, but that site now blocks direct downloads. lazylofi sources
-> lofi from `archive.org` instead (chillhop podcast archive, Jamendo, Jazz
-> One, etc.) so the streams actually work.
-
 ## License
 
 lazylofi is released under the **MIT License**. See [`LICENSE`](LICENSE) for
@@ -305,9 +297,6 @@ Copyright (c) 2025 Federico
 
 ## Credits
 
-- [lowfi](https://github.com/talwat/lowfi) — the original project lazylofi is
-  forked from. Most of the audio plumbing and the `scrape` subcommand trace
-  back there.
 - [Internet Archive](https://archive.org/) — hosts every built-in track.
 - Chillhop, Jamendo, Jazz One, and the other artists whose music makes this
   project worth shipping.
