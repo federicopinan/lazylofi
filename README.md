@@ -48,36 +48,40 @@ music.
 
 ## Installing
 
-### Homebrew (macOS, Linux)
+Pick whichever method matches your setup. Homebrew is the smoothest on macOS
+and Linux because it pulls the C build deps for you.
+
+### Homebrew (macOS, Linux) — recommended
 
 ```sh
 brew install federicopinan/tap/lazylofi
 ```
 
-Pulls the formula from [`federicopinan/homebrew-tap`](https://github.com/federicopinan/homebrew-tap)
-and builds from source. On Linux the formula pulls in `alsa-lib` and `openssl@3`
-as build deps so you don't need them on the system path.
-
-### Cargo (recommended)
-
-You'll need **Rust 1.74.0 or newer**.
-
-- **macOS** and **Windows**: no extra dependencies.
-- **Linux**: you'll need `openssl`, `alsa-lib`, and their `-dev` headers.
+The formula lives in
+[`federicopinan/homebrew-tap`](https://github.com/federicopinan/homebrew-tap)
+and builds from source. On Linux it also installs `alsa-lib` and `openssl@3`
+as build dependencies so you don't need them on the system path.
 
 ```sh
-# Arch / Manjaro
-sudo pacman -S alsa-lib openssl pkgconf
+# Update later
+brew upgrade lazylofi
 
-# Debian / Ubuntu
-sudo apt install libasound2-dev libssl-dev pkg-config
-
-# Fedora
-sudo dnf install alsa-lib-devel openssl-devel pkgconf-pkg-config
+# Uninstall
+brew uninstall lazylofi
 ```
 
-If you're using PulseAudio on Linux, also install `pulseaudio-alsa` so the
-default sink lines up with what your desktop mixer expects.
+### Pre-built binaries
+
+Grab a binary for your platform from the
+[latest release](https://github.com/federicopinan/lazylofi/releases/latest) and
+put it somewhere on your `$PATH`. Binaries are built on every tag push by the
+GitHub Actions release workflow (Linux x86_64 / aarch64, macOS x86_64 / aarch64,
+Windows x86_64) and shipped with their `LICENSE` and `README`.
+
+### Cargo
+
+For Rust users. You'll need **Rust 1.74.0 or newer** plus the system deps
+listed in [Dependencies](#dependencies) below.
 
 ```sh
 cargo install lazylofi
@@ -87,12 +91,6 @@ cargo install lazylofi --features mpris
 ```
 
 Make sure `$HOME/.cargo/bin` is on your `$PATH`.
-
-### Pre-built binaries
-
-Grab a binary for your platform from the
-[latest release](https://github.com/federicopinan/lazylofi/releases/latest) if you'd
-rather skip the build.
 
 ### AUR
 
@@ -108,7 +106,60 @@ cargo build --release
 ./target/release/lazylofi
 ```
 
+This is the same code path the release workflow uses. Use it if you want to
+patch something locally and try it before opening a PR.
+
+## Dependencies
+
+| Platform | What you need | Why |
+|----------|---------------|-----|
+| **macOS** | nothing | Works out of the box. |
+| **Windows** | nothing | Works out of the box. |
+| **Linux** | `alsa-lib`, `openssl`, `pkg-config` (and their `-dev` headers) | `rodio`/`cpal` link against ALSA for audio output; `rustls`/`openssl-sys` need the OpenSSL headers at build time. |
+
+Per-distro commands:
+
+```sh
+# Arch / Manjaro
+sudo pacman -S alsa-lib openssl pkgconf
+
+# Debian / Ubuntu
+sudo apt install libasound2-dev libssl-dev pkg-config
+
+# Fedora
+sudo dnf install alsa-lib-devel openssl-devel pkgconf-pkg-config
+```
+
+If you're using PulseAudio on Linux, also install `pulseaudio-alsa` so the
+default sink lines up with what your desktop mixer expects.
+
+The Homebrew formula and the release workflow's Linux build job install these
+for you; only cargo and source builds need you to set them up by hand.
+
 ## Quick start
+
+### Your first session
+
+From any terminal:
+
+```sh
+lazylofi
+```
+
+On the very first launch you'll see a genre picker. Use `↑`/`↓` (or `k`/`j`),
+press `Enter` to confirm, or `q`/`Esc` to quit. After picking, the genre is
+saved to `~/.config/lazylofi/genre.txt`, so the next launch goes straight to
+playback without re-asking.
+
+If you don't want the picker at all, pass `--genre` (or `-g`) with one of the
+built-ins: `lofi`, `synthwave`, `jazz-lofi`, `ambient`.
+
+Playback starts automatically — no "play" button. The dial sweeps while
+lazylofi tunes in (`scanning stations...` → `tuning in...` → `locked · 93.4
+MHz`), and the track starts as soon as it's buffered. When the current song
+ends, lazylofi auto-advances to the next one.
+
+### Common invocations
 
 ```sh
 # Open the genre picker (default).
