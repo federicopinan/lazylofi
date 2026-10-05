@@ -1,0 +1,211 @@
+name: Release
+
+# Triggers:
+#   - on every `v*` tag push (e.g. v1.5.6)
+#   - manual dispatch for re-runs
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+
+# Default to least-privilege; jobs opt in to what they need.
+permissions:
+  contents: read
+
+jobs:
+  # Build a release binary for each target. Each runner builds natively
+  # so there's no cross-toolchain friction. alsa-lib + openssl are pulled
+  # in on Linux because rodio (via cpal) and the rustls dep graph both
+  # need their headers at build time.
+  build:
+    name: Build (${{ matrix.target }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: x86_64-unknown-linux-gnu
+            os: ubuntu-latest
+            binary: lazylofi
+            archive: tar.gz
+          - target: aarch64-unknown-linux-gnu
+            os: ubuntu-24.04-arm
+            binary: lazylofi
+            archive: tar.gz
+          - target: x86_64-apple-darwin
+            os: macos-13
+            binary: lazylofi
+            archive: tar.gz
+          - target: aarch64-apple-darwin
+            os: macos-latest
+            binary: lazylofi
+            archive: tar.gz
+          - target: x86_64-pc-windows-msvc
+            os: windows-latest
+            binary: lazylofi.exe
+            archive: zip
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # Belt-and-suspenders: the tag version must equal the version in
+      # Cargo.toml. Catches the "I tagged v1.5.7 but forgot to bump
+      # Cargo.toml" mistake before we publish anything.
+      - name: Verify version matches tag
+        shell: bash
+        run: |
+          version=$(grep '^version' Cargo.toml | head -1 | cut -d'"' -f2)
+          tag="${GITHUB_REF_NAME#v}"
+          if [ "$version" != "$tag" ]; then
+            echo "::error::Cargo.toml version ($version) does not match tag ($tag)"
+            exit 1
+          fi
+          echo "Cargo.toml version $version matches tag $tag."
+
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - name: Cache cargo
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: "."
+
+      - name: Install Linux build deps
+        if: runner.os == "Linux"
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libasound2-dev libssl-dev pkg-config
+
+      - name: Build (release)
+        run: cargo build --release --target ${{ matrix.target }} --locked
+
+      - name: Package (tar.gz)
+        if: matrix.archive == "tar.gz"
+        shell: bash
+        run: |
+          mkdir -p staging
+          cp "target/${{ matrix.target }}/release/${{ matrix.binary }}" staging/
+          cp LICENSE staging/
+          cp README.md staging/
+          tar -C staging -czf "lazylofi-${{ github.ref_name }}-${{ matrix.target }}.tar.gz" .
+          rm -rf staging
+
+      - name: Package (zip)
+        if: matrix.archive == "zip"
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Path staging | Out-Null
+          Copy-Item "target/${{ matrix.target }}/release/${{ matrix.binary }}" staging/
+          Copy-Item LICENSE staging/
+          Copy-Item README.md staging/
+          Compress-Archive -Path staging/* -DestinationPath "lazylofi-${{ github.ref_name }}-${{ matrix.target }}.zip"
+          Remove-Item -Recurse -Force staging
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: lazylofi-${{ matrix.target }}
+          path: lazylofi-${{ github.ref_name }}-${{ matrix.target }}.${{ matrix.archive }}
+
+  # Collect the artifacts, publish a GitHub Release with the tarballs/zip
+  # plus a checksums.txt so users can verify downloads. Needs write access
+  # to publish the release; everything else in this workflow only needs read.
+  release:
+    name: Publish release
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Download artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+          merge-multiple: true
+
+      - name: Generate checksums
+        shell: bash
+        run: |
+          cd artifacts
+          sha256sum *.{tar.gz,zip} > ../checksums.txt
+          cat ../checksums.txt
+
+      - name: Create release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            artifacts/**/*.tar.gz
+            artifacts/**/*.zip
+            checksums.txt
+          generate_release_notes: true
+          fail_on_unmatched_files: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  # After the release exists, bump the version + SHA in the Homebrew
+  # formula. Skipped when HOMEBREW_TAP_TOKEN is unset so the workflow
+  # still works for people who don't maintain a tap.
+  update-tap:
+    name: Update Homebrew tap
+    needs: release
+    if: ${{ secrets.HOMEBREW_TAP_TOKEN != '' }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Compute source tarball SHA
+        id: src
+        shell: bash
+        run: |
+          version="${GITHUB_REF_NAME#v}"
+          curl -sL "https://github.com/${GITHUB_REPOSITORY}/archive/refs/tags/v${version}.tar.gz" -o /tmp/source.tar.gz
+          echo "sha=$(sha256sum /tmp/source.tar.gz | cut -d' ' -f1)" >> "$GITHUB_OUTPUT"
+
+      - name: Clone and update formula
+        env:
+          TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+          VERSION: ${{ github.ref_name }}
+          SHA: ${{ steps.src.outputs.sha }}
+        run: |
+          git clone "https://x-access-token:${TAP_TOKEN}@github.com/federicopinan/homebrew-tap.git" tap
+          cd tap
+          new_version="${VERSION#v}"
+          python3 - <<PY
+          import re
+          path = "Formula/lazylofi.rb"
+          with open(path) as f:
+              content = f.read()
+          content = re.sub(
+              r'url "https://github\.com/federicopinan/lazylofi/archive/refs/tags/v[\d.]+\.tar\.gz"',
+              f'url "https://github.com/federicopinan/lazylofi/archive/refs/tags/v{new_version}.tar.gz"',
+              content,
+          )
+          content = re.sub(
+              r'sha256 "[a-f0-9]+"',
+              f'sha256 "{sha}"',
+              content,
+          )
+          with open(path, "w") as f:
+              f.write(content)
+          PY
+          cat Formula/lazylofi.rb
+
+      - name: Commit and push
+        env:
+          TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+        run: |
+          cd tap
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add Formula/lazylofi.rb
+          if git diff --cached --quiet; then
+            echo "No changes to the formula; skipping commit."
+            exit 0
+          fi
+          git commit -m "lazylofi ${GITHUB_REF_NAME#v}"
+          git push
