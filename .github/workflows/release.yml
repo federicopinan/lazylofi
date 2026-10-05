@@ -153,13 +153,21 @@ jobs:
   update-tap:
     name: Update Homebrew tap
     needs: release
-    if: ${{ secrets.HOMEBREW_TAP_TOKEN != '' }}
     runs-on: ubuntu-latest
     permissions:
       contents: read
+    env:
+      TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
     steps:
+      - name: Skip if tap token missing
+        if: env.TAP_TOKEN == ''
+        run: |
+          echo "HOMEBREW_TAP_TOKEN is not set; skipping tap update."
+          echo "Set it as a repo secret to auto-bump the formula on release."
+
       - name: Compute source tarball SHA
         id: src
+        if: env.TAP_TOKEN != ''
         shell: bash
         run: |
           version="${GITHUB_REF_NAME#v}"
@@ -167,8 +175,8 @@ jobs:
           echo "sha=$(sha256sum /tmp/source.tar.gz | cut -d' ' -f1)" >> "$GITHUB_OUTPUT"
 
       - name: Clone and update formula
+        if: env.TAP_TOKEN != ''
         env:
-          TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
           VERSION: ${{ github.ref_name }}
           SHA: ${{ steps.src.outputs.sha }}
         run: |
@@ -196,8 +204,7 @@ jobs:
           cat Formula/lazylofi.rb
 
       - name: Commit and push
-        env:
-          TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+        if: env.TAP_TOKEN != ''
         run: |
           cd tap
           git config user.name "github-actions[bot]"
