@@ -76,7 +76,7 @@ jobs:
           workspaces: "."
 
       - name: Install Linux build deps
-        if: runner.os == "Linux"
+        if: ${{ runner.os == 'Linux' }}
         run: |
           sudo apt-get update
           sudo apt-get install -y libasound2-dev libssl-dev pkg-config
@@ -85,7 +85,7 @@ jobs:
         run: cargo build --release --target ${{ matrix.target }} --locked
 
       - name: Package (tar.gz)
-        if: matrix.archive == "tar.gz"
+        if: ${{ matrix.archive == 'tar.gz' }}
         shell: bash
         run: |
           mkdir -p staging
@@ -96,7 +96,7 @@ jobs:
           rm -rf staging
 
       - name: Package (zip)
-        if: matrix.archive == "zip"
+        if: ${{ matrix.archive == 'zip' }}
         shell: pwsh
         run: |
           New-Item -ItemType Directory -Path staging | Out-Null
@@ -160,14 +160,14 @@ jobs:
       TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
     steps:
       - name: Skip if tap token missing
-        if: env.TAP_TOKEN == ''
+        if: ${{ env.TAP_TOKEN == '' }}
         run: |
           echo "HOMEBREW_TAP_TOKEN is not set; skipping tap update."
           echo "Set it as a repo secret to auto-bump the formula on release."
 
       - name: Compute source tarball SHA
         id: src
-        if: env.TAP_TOKEN != ''
+        if: ${{ env.TAP_TOKEN != '' }}
         shell: bash
         run: |
           version="${GITHUB_REF_NAME#v}"
@@ -175,7 +175,7 @@ jobs:
           echo "sha=$(sha256sum /tmp/source.tar.gz | cut -d' ' -f1)" >> "$GITHUB_OUTPUT"
 
       - name: Clone and update formula
-        if: env.TAP_TOKEN != ''
+        if: ${{ env.TAP_TOKEN != '' }}
         env:
           VERSION: ${{ github.ref_name }}
           SHA: ${{ steps.src.outputs.sha }}
@@ -204,7 +204,7 @@ jobs:
           cat Formula/lazylofi.rb
 
       - name: Commit and push
-        if: env.TAP_TOKEN != ''
+        if: ${{ env.TAP_TOKEN != '' }}
         run: |
           cd tap
           git config user.name "github-actions[bot]"
