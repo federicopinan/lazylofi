@@ -48,10 +48,17 @@ music.
 
 ## Installing
 
-> **Maintaining a package?** If you're interested in packaging `lazylofi` for
-> homebrew, AUR, nixpkgs, or similar, please open an issue.
+### Homebrew (macOS, Linux)
 
-### Dependencies
+```sh
+brew install federicopinan/tap/lazylofi
+```
+
+Pulls the formula from [`federicopinan/homebrew-tap`](https://github.com/federicopinan/homebrew-tap)
+and builds from source. On Linux the formula pulls in `alsa-lib` and `openssl@3`
+as build deps so you don't need them on the system path.
+
+### Cargo (recommended)
 
 You'll need **Rust 1.74.0 or newer**.
 
@@ -71,8 +78,6 @@ sudo dnf install alsa-lib-devel openssl-devel pkgconf-pkg-config
 
 If you're using PulseAudio on Linux, also install `pulseaudio-alsa` so the
 default sink lines up with what your desktop mixer expects.
-
-### Cargo (recommended)
 
 ```sh
 cargo install lazylofi
