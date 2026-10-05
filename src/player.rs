@@ -386,7 +386,14 @@ impl Player {
                 tx.send(Messages::NewSong).await?;
             }
             Err(error) => {
-                if !error.downcast::<reqwest::Error>()?.is_timeout() {
+                // `List::random` now reports both reqwest and filesystem errors
+                // through `eyre`, so we use `downcast_ref` (the same pattern the
+                // downloader uses) instead of `downcast().?` which would silently
+                // swallow non-reqwest errors and never send `TryAgain`.
+                let timeout = error
+                    .downcast_ref::<reqwest::Error>()
+                    .is_some_and(reqwest::Error::is_timeout);
+                if !timeout {
                     sleep(TIMEOUT).await;
                 }
 

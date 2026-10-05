@@ -2,5 +2,7 @@
 # Local runtime state (Pi, atl)
 .atl/
 .pi/
+# Internal planning notes
+/odd/
 # User-provided reference images, not part of the project
 /references/
