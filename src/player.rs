@@ -122,8 +122,10 @@ pub enum Messages {
     Quit,
 }
 
-/// The time to wait in between errors.
-const TIMEOUT: Duration = Duration::from_secs(5);
+/// The time to wait in between errors. Kept in lockstep with the prefetcher's
+/// [`HTTP_TIMEOUT`](prefetcher::HTTP_TIMEOUT) so a single value drives
+/// both the request budget and the retry backoff.
+const TIMEOUT: Duration = prefetcher::HTTP_TIMEOUT;
 
 /// The amount of songs to buffer up.
 const BUFFER_SIZE: usize = 5;
@@ -157,7 +159,14 @@ pub struct Player {
     tracks: RwLock<VecDeque<tracks::Track>>,
 
     /// One downloaded track per inactive genre, ready for a genre switch.
-    prefetched: RwLock<HashMap<String, tracks::Track>>,
+    /// Shared with [`Prefetcher`] so picker-time downloads land in the same
+    /// map the player consumes during `next` / `ChangeGenre`.
+    prefetched: Arc<RwLock<HashMap<String, tracks::Track>>>,
+
+    /// The standalone prefetcher that owns the shared map and the HTTP
+    /// client. Held so post-pick re-warms have a handle without having
+    /// to thread the prefetcher through every call site.
+    prefetcher: Arc<Prefetcher>,
 
     /// The actual list of tracks to be played.
     ///
@@ -173,11 +182,6 @@ pub struct Player {
     /// True if the user passed `--tracks`. When set, [`Messages::ChangeGenre`]
     /// is a no-op since the user already committed to a custom list.
     pub has_custom_tracks: bool,
-
-    /// Whether verbose diagnostic output (prefetcher failures, mpris init
-    /// errors) is allowed to surface in the terminal. Mirrors
-    /// `args.debug`; background tasks consult it before printing.
-    pub debug: bool,
 
     /// The initial volume level, as a percentage (0-100).
     volume: u16,
@@ -260,7 +264,15 @@ impl Player {
     /// This also will load the track list & persistent volume.
     /// `genre` is the resolved genre (from `--genre` or the picker). When
     /// `args.tracks` is set, the genre is ignored.
-    pub async fn new(args: &Args, genre: Option<String>) -> eyre::Result<Self> {
+    /// `prefetcher` provides the shared [`Client`], [`data_dir`](Prefetcher::data_dir),
+    /// and the prefetched-track map. The picker constructs the prefetcher
+    /// before showing the UI so first-track downloads already land in the
+    /// map by the time the user picks.
+    pub async fn new(
+        args: &Args,
+        genre: Option<String>,
+        prefetcher: Arc<Prefetcher>,
+    ) -> eyre::Result<Self> {
         // Load the volume file. When a genre is active, prefer that genre's
         // per-file volume. Otherwise (e.g. `--tracks`) fall back to the
         // global `volume.txt`.
@@ -270,11 +282,11 @@ impl Player {
             PersistentVolume::load().await?.inner()
         };
 
-        // Load the track list.
-        let data_dir = dirs::data_dir()
-            .ok_or_else(|| eyre::eyre!("Couldn't find data directory"))?
-            .join("lazylofi");
-        let has_custom_tracks = args.tracks.is_some();
+        // Load the track list using the data directory the prefetcher
+        // already resolved (and ensured exists).
+        let data_dir = prefetcher.data_dir.clone();
+        let has_custom_tracks = prefetcher.has_custom_tracks;
+        let client = prefetcher.client.clone();
         let list = List::load(&args.tracks, &genre, &data_dir).await?;
 
         // We should only shut up alsa forcefully if we really have to.
@@ -289,19 +301,11 @@ impl Player {
             sink.pause();
         }
 
-        let client = Client::builder()
-            .user_agent(concat!(
-                env!("CARGO_PKG_NAME"),
-                "/",
-                env!("CARGO_PKG_VERSION")
-            ))
-            .timeout(TIMEOUT)
-            .build()?;
-
         let player = Self {
             load_phase: RwLock::new(LoadPhase::Scanning),
             tracks: RwLock::new(VecDeque::with_capacity(5)),
-            prefetched: RwLock::new(HashMap::new()),
+            prefetched: Arc::clone(&prefetcher.prefetched),
+            prefetcher: Arc::clone(&prefetcher),
             current: ArcSwapOption::new(None),
             client,
             sink,
@@ -309,7 +313,6 @@ impl Player {
             list: RwLock::new(list),
             data_dir,
             has_custom_tracks,
-            debug: args.debug,
             _handle: handle,
             _stream,
         };
@@ -321,6 +324,19 @@ impl Player {
     ///
     /// This will also set `current` to the newly loaded song.
     pub async fn next(&self) -> eyre::Result<tracks::Decoded> {
+        // The shared prefetched map is populated while the picker is
+        // visible (see `play::play`), so the first `next` call after
+        // `Init` consumes a downloaded track for the chosen genre
+        // instead of doubling up with the `Downloader`. Falls through
+        // to the queue / fresh-download path when the map is empty.
+        let current_genre = self.list.read().await.name.clone();
+        let prefetched_track = self.prefetched.write().await.remove(&current_genre);
+        if let Some(track) = prefetched_track {
+            let decoded = track.decode()?;
+            self.set_current(decoded.info.clone());
+            return Ok(decoded);
+        }
+
         let queued = self.tracks.write().await.pop_front();
 
         let track = if let Some(track) = queued {
@@ -428,7 +444,7 @@ impl Player {
         let mpris = mpris::Server::new(Arc::clone(&player), tx.clone())
             .await
             .inspect_err(|x| {
-                if player.debug {
+                if player.prefetcher.debug {
                     dbg!(x);
                 }
             })?;
@@ -441,7 +457,17 @@ impl Player {
         Downloader::notify(&itx).await?;
 
         // Pre-fetch the first track of every other genre without blocking playback.
-        task::spawn(Prefetcher::warm_all(Arc::clone(&player)));
+        // The picker already ran `Prefetcher::warm_one` in the background for
+        // the picked genre; this re-warm fills in any other genres the picker
+        // didn't cover (custom genres, or all builtins if there was no
+        // persisted genre at startup). Entries already in the shared map are
+        // skipped, so this is a no-op when the picker warmed everything.
+        let warm_player = Arc::clone(&player);
+        let warm_prefetcher = Arc::clone(&player.prefetcher);
+        task::spawn(async move {
+            let current_genre = warm_player.list.read().await.name.clone();
+            warm_prefetcher.warm_all(Some(&current_genre)).await;
+        });
 
         // Set the initial sink volume to the one specified.
         player.set_volume(player.volume as f32 / 100.0);
@@ -613,7 +639,12 @@ impl Player {
                                 eprintln!("failed to skip after genre change: {error}");
                             }
 
-                            task::spawn(Prefetcher::warm_all(Arc::clone(&player_clone)));
+                            // Re-warm every genre other than the one we just switched to.
+                            let warm_prefetcher = Arc::clone(&player_clone.prefetcher);
+                            let warm_new_genre = genre_clone.clone();
+                            task::spawn(async move {
+                                warm_prefetcher.warm_all(Some(&warm_new_genre)).await;
+                            });
                         });
                     }
                 }

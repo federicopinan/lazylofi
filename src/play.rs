@@ -8,8 +8,10 @@ use tokio::fs;
 use tokio::{sync::mpsc, task};
 
 use crate::paths;
+use crate::player::ui::picker::BUILTIN_GENRES;
 use crate::player::{ui, Messages};
 use crate::player::{LoadPhase, Player};
+use crate::player::prefetcher::{build_client, Prefetcher};
 use crate::Args;
 
 /// This is the representation of the persistent volume,
@@ -178,6 +180,41 @@ impl PersistentGenre {
 /// Initializes the audio server, and then safely stops
 /// it when the frontend quits.
 pub async fn play(args: Args) -> eyre::Result<()> {
+    // Build the prefetcher before the picker so background downloads
+    // start the moment the user is staring at the genre list — the
+    // picked genre's first track is on disk (or close to it) by the
+    // time the picker closes.
+    let data_dir = paths::data_dir().await?;
+    let client = build_client()?;
+    let has_custom_tracks = args.tracks.is_some();
+    let prefetcher = Arc::new(Prefetcher::new(
+        client,
+        data_dir.clone(),
+        has_custom_tracks,
+        args.debug,
+    ));
+
+    // Kick off picker-time prefetch. With a persisted genre the only
+    // target is that one; without one (or if the file is unreadable)
+    // we fan out across the built-ins so whichever the user picks is
+    // already on disk.
+    if !has_custom_tracks {
+        let warm_prefetcher = Arc::clone(&prefetcher);
+        let target_genres: Vec<String> =
+            match PersistentGenre::load().await {
+                Ok(Some(genre)) => vec![genre],
+                Ok(None) | Err(_) => BUILTIN_GENRES
+                    .iter()
+                    .map(|genre| (*genre).to_owned())
+                    .collect(),
+            };
+        task::spawn(async move {
+            for genre in target_genres {
+                Arc::clone(&warm_prefetcher).warm_one(&genre).await;
+            }
+        });
+    }
+
     // Resolve which genre to play, or whether to show the picker.
     let genre = match (args.genre.clone(), args.tracks.clone()) {
         (Some(genre), _) => Some(genre),
@@ -189,7 +226,6 @@ pub async fn play(args: Args) -> eyre::Result<()> {
                 // Either no persisted file, or it is empty / unreadable: fall
                 // through to the picker. Persistence failures shouldn't block
                 // the user from launching lazylofi.
-                let data_dir = paths::data_dir().await?;
                 ui::picker::pick(&data_dir)?
             }
         }
@@ -210,8 +246,11 @@ pub async fn play(args: Args) -> eyre::Result<()> {
         return Ok(());
     }
 
-    // Actually initializes the player.
-    let player = Arc::new(Player::new(&args, genre.clone()).await?);
+    // Actually initializes the player. The adopted prefetcher means
+    // `Player::next` consumes a prefetched track for the chosen genre
+    // before falling back to a fresh download — no double-download of
+    // the first song.
+    let player = Arc::new(Player::new(&args, genre.clone(), Arc::clone(&prefetcher)).await?);
 
     let (tx, rx) = mpsc::channel(8);
     let ui = task::spawn(ui::start(Arc::clone(&player), tx.clone(), args));
