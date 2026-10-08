@@ -9,6 +9,8 @@ use rand::Rng as _;
 use reqwest::Client;
 use tokio::fs;
 
+use crate::paths;
+
 use super::Track;
 
 /// Bundled built-in genre lists, mapped to the name used in
@@ -176,10 +178,7 @@ impl List {
             }
 
             // Check if the track is in ~/.local/share/lazylofi, in which case we'll load that.
-            let candidate = dirs::data_dir()
-                .ok_or_else(|| eyre!("could not resolve data directory"))?
-                .join("lazylofi")
-                .join(format!("{arg}.txt"));
+            let candidate = paths::data_dir().await?.join(format!("{arg}.txt"));
 
             let name = if candidate.exists() {
                 candidate

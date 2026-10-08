@@ -40,6 +40,7 @@
 
 use clap::{Parser, Subcommand};
 
+mod paths;
 mod play;
 mod player;
 mod tracks;

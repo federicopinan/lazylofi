@@ -7,6 +7,7 @@ use eyre::eyre;
 use tokio::fs;
 use tokio::{sync::mpsc, task};
 
+use crate::paths;
 use crate::player::{ui, Messages};
 use crate::player::{LoadPhase, Player};
 use crate::Args;
@@ -22,15 +23,7 @@ pub struct PersistentVolume {
 impl PersistentVolume {
     /// Retrieves the config directory.
     async fn config() -> eyre::Result<PathBuf> {
-        let config = dirs::config_dir()
-            .ok_or(eyre!("Couldn't find config directory"))?
-            .join(PathBuf::from("lazylofi"));
-
-        if !config.exists() {
-            fs::create_dir_all(&config).await?;
-        }
-
-        Ok(config)
+        paths::config_dir().await
     }
 
     /// Returns the volume as a percentage in the 0-100 range.
@@ -38,7 +31,7 @@ impl PersistentVolume {
         self.inner
     }
 
-    /// Loads the [`PersistentVolume`] from [`dirs::config_dir()`].
+    /// Loads the [`PersistentVolume`] from the lazylofi config directory.
     pub async fn load() -> eyre::Result<Self> {
         let config = Self::config().await?;
         let volume = config.join(PathBuf::from("volume.txt"));
@@ -82,20 +75,7 @@ pub struct PersistentGenreVolume;
 impl PersistentGenreVolume {
     /// Returns the per-genre volume directory, creating it if needed.
     async fn dir() -> eyre::Result<PathBuf> {
-        let base = dirs::config_dir()
-            .ok_or_else(|| eyre!("Couldn't find config directory"))?
-            .join(PathBuf::from("lazylofi"));
-
-        if !base.exists() {
-            fs::create_dir_all(&base).await?;
-        }
-
-        let dir = base.join(PathBuf::from("volume"));
-        if !dir.exists() {
-            fs::create_dir_all(&dir).await?;
-        }
-
-        Ok(dir)
+        paths::volume_dir().await
     }
 
     /// Validates a genre name so it can safely be used as a path
@@ -164,18 +144,10 @@ pub struct PersistentGenre;
 impl PersistentGenre {
     /// Retrieves the path to the genre file, creating the directory if missing.
     async fn config() -> eyre::Result<PathBuf> {
-        let config = dirs::config_dir()
-            .ok_or_else(|| eyre!("Couldn't find config directory"))?
-            .join(PathBuf::from("lazylofi"));
-
-        if !config.exists() {
-            fs::create_dir_all(&config).await?;
-        }
-
-        Ok(config.join(PathBuf::from("genre.txt")))
+        Ok(paths::config_dir().await?.join(PathBuf::from("genre.txt")))
     }
 
-    /// Loads the persisted genre from [`dirs::config_dir()`].
+    /// Loads the persisted genre from the lazylofi config directory.
     ///
     /// Returns `Ok(None)` when the file does not exist or is empty / whitespace-only.
     /// I/O or parse errors are surfaced so the caller can fall back to the picker.
@@ -217,9 +189,7 @@ pub async fn play(args: Args) -> eyre::Result<()> {
                 // Either no persisted file, or it is empty / unreadable: fall
                 // through to the picker. Persistence failures shouldn't block
                 // the user from launching lazylofi.
-                let data_dir = dirs::data_dir()
-                    .ok_or_else(|| eyre!("Couldn't find data directory"))?
-                    .join("lazylofi");
+                let data_dir = paths::data_dir().await?;
                 ui::picker::pick(&data_dir)?
             }
         }
