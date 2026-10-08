@@ -36,6 +36,7 @@ use crate::{
 };
 
 pub mod downloader;
+pub mod error;
 pub mod prefetcher;
 pub mod ui;
 
@@ -386,14 +387,12 @@ impl Player {
                 tx.send(Messages::NewSong).await?;
             }
             Err(error) => {
-                // `List::random` now reports both reqwest and filesystem errors
-                // through `eyre`, so we use `downcast_ref` (the same pattern the
-                // downloader uses) instead of `downcast().?` which would silently
-                // swallow non-reqwest errors and never send `TryAgain`.
-                let timeout = error
-                    .downcast_ref::<reqwest::Error>()
-                    .is_some_and(reqwest::Error::is_timeout);
-                if !timeout {
+                // `List::random` reports both reqwest and filesystem errors
+                // through `eyre`. A reqwest timeout is treated as a "try
+                // again now" rather than waiting a full backoff cycle, since
+                // timeouts usually mean the connection will succeed next
+                // attempt.
+                if !error::is_reqwest_timeout(&error) {
                     sleep(TIMEOUT).await;
                 }
 

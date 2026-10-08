@@ -61,14 +61,9 @@ impl Downloader {
                         {
                             Ok(track) => self.player.tracks.write().await.push_back(track),
                             Err(error) => {
-                                // `List::random` now reports both reqwest and
-                                // filesystem errors through `eyre`, so a
-                                // reqwest timeout needs a downcast to keep
-                                // its original "no backoff" meaning.
-                                let timeout = error
-                                    .downcast_ref::<reqwest::Error>()
-                                    .is_some_and(reqwest::Error::is_timeout);
-                                if !timeout {
+                                // A reqwest timeout gets an immediate retry;
+                                // every other error waits a backoff cycle.
+                                if !super::error::is_reqwest_timeout(&error) {
                                     sleep(TIMEOUT).await;
                                 }
                             }
