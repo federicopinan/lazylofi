@@ -11,6 +11,17 @@ use tokio::fs;
 
 use super::Track;
 
+/// Bundled built-in genre lists, mapped to the name used in
+/// [`BUILTIN_GENRES`](crate::player::ui::picker::BUILTIN_GENRES).
+/// `include_str!` requires literal paths, so the data table has
+/// to live next to its only consumer (`List::load`).
+const BUILTIN_DATA: &[(&str, &str)] = &[
+    ("lofi", include_str!("../../data/lofi.txt")),
+    ("synthwave", include_str!("../../data/synthwave.txt")),
+    ("jazz-lofi", include_str!("../../data/jazz-lofi.txt")),
+    ("ambient", include_str!("../../data/ambient.txt")),
+];
+
 /// Represents a list of tracks that can be played.
 ///
 /// See the [README](https://github.com/federicopinan/lazylofi?tab=readme-ov-file#custom-track-lists)
@@ -186,17 +197,13 @@ impl List {
             Ok(Self::new(name, &raw))
         } else {
             let name = genre.as_deref().unwrap_or("lofi");
-            let raw = match name {
-                "lofi" => include_str!("../../data/lofi.txt").to_owned(),
-                "synthwave" => include_str!("../../data/synthwave.txt").to_owned(),
-                "jazz-lofi" => include_str!("../../data/jazz-lofi.txt").to_owned(),
-                "ambient" => include_str!("../../data/ambient.txt").to_owned(),
-                _ => {
-                    let path = data_dir.join(format!("{name}.txt"));
-                    fs::read_to_string(&path)
-                        .await
-                        .map_err(|err| eyre!("could not load genre '{name}': {err}"))?
-                }
+            let raw = if let Some((_, content)) = BUILTIN_DATA.iter().find(|(key, _)| *key == name) {
+                (*content).to_owned()
+            } else {
+                let path = data_dir.join(format!("{name}.txt"));
+                fs::read_to_string(&path)
+                    .await
+                    .map_err(|err| eyre!("could not load genre '{name}': {err}"))?
             };
             Ok(Self::new(name, &raw))
         }

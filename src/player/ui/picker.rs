@@ -29,7 +29,11 @@ use super::app::App;
 use super::components::{AMBER, BACKGROUND, GREEN};
 
 /// Built-in genres bundled with lazylofi.
-const BUILTIN_GENRES: &[&str] = &["lofi", "synthwave", "jazz-lofi", "ambient"];
+///
+/// Single source of truth for the built-in genre name list. The
+/// embedded list contents (the actual track URLs) live in
+/// [`crate::tracks::list`] alongside their only consumer.
+pub const BUILTIN_GENRES: &[&str] = &["lofi", "synthwave", "jazz-lofi", "ambient"];
 
 /// File in `data_dir` that should be excluded from genre lists.
 const EXCLUDED_FILE: &str = "micropop.txt";

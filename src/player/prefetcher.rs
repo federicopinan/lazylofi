@@ -3,13 +3,11 @@
 use std::{collections::HashSet, fs, path::Path, sync::Arc};
 
 use super::Player;
+use crate::player::ui::picker::BUILTIN_GENRES;
 use crate::tracks::list::List;
 
 /// Maximum number of inactive genres to warm in one pass.
 const MAX_PREFETCH: usize = 8;
-
-/// Built-in genres bundled with lazylofi.
-const BUILTIN_GENRES: &[&str] = &["lofi", "synthwave", "jazz-lofi", "ambient"];
 
 /// Warms the in-memory track pool for inactive genres.
 pub struct Prefetcher;
