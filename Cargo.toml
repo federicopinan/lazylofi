@@ -35,7 +35,16 @@ futures = "0.3.31"
 arc-swap = "1.7.1"
 
 # Data
-reqwest = "0.12.9"
+# rustls-tls-native-roots instead of default-tls (native-tls → openssl-sys).
+# Avoids the system OpenSSL/pkg-config dependency on Linux for distribution
+# builds (brew, deb, rpm, AppImage) without sacrificing TLS.
+reqwest = { version = "0.12.9", default-features = false, features = [
+    "rustls-tls-native-roots",
+    "gzip",
+    "brotli",
+    "deflate",
+    "http2",
+] }
 bytes = "1.9.0"
 
 # I/O
