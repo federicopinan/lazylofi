@@ -1,0 +1,113 @@
+name: Build only
+
+# Verification aid: compiles the release binaries on hosted runners and
+# leaves them as workflow artifacts. It never creates a GitHub Release,
+# never touches the Homebrew tap and never publishes anything.
+#
+# Run it from the Actions tab ("Build only" -> "Run workflow") or with:
+#   gh workflow run build-only.yml --ref <branch>
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Version tag used for the archive names (e.g. v1.5.9)"
+        required: true
+        default: "v0.0.0-dev"
+      upload_artifacts:
+        description: "Upload the built archives as workflow artifacts"
+        type: boolean
+        required: false
+        default: true
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Build (${{ matrix.target }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: x86_64-unknown-linux-gnu
+            os: ubuntu-24.04
+            binary: lazylofi
+            archive: tar.gz
+          - target: aarch64-unknown-linux-gnu
+            os: ubuntu-24.04-arm
+            binary: lazylofi
+            archive: tar.gz
+          - target: x86_64-apple-darwin
+            os: macos-15-intel
+            binary: lazylofi
+            archive: tar.gz
+          - target: aarch64-apple-darwin
+            os: macos-15
+            binary: lazylofi
+            archive: tar.gz
+          - target: x86_64-pc-windows-msvc
+            os: windows-latest
+            binary: lazylofi.exe
+            archive: zip
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - name: Cache cargo
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: "."
+
+      # Development packages stay on the build runners. The Homebrew
+      # formula installs the finished binary and needs none of them.
+      - name: Install Linux build deps
+        if: ${{ runner.os == 'Linux' }}
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libasound2-dev pkg-config
+
+      - name: Build (release)
+        run: cargo build --release --target ${{ matrix.target }} --locked
+
+      - name: Package (tar.gz)
+        if: ${{ matrix.archive == 'tar.gz' }}
+        shell: bash
+        run: |
+          mkdir -p staging
+          cp "target/${{ matrix.target }}/release/${{ matrix.binary }}" staging/
+          cp LICENSE staging/
+          cp README.md staging/
+          tar -C staging -czf "lazylofi-${{ inputs.tag }}-${{ matrix.target }}.tar.gz" .
+          rm -rf staging
+
+      - name: Package (zip)
+        if: ${{ matrix.archive == 'zip' }}
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Path staging | Out-Null
+          Copy-Item "target/${{ matrix.target }}/release/${{ matrix.binary }}" staging/
+          Copy-Item LICENSE staging/
+          Copy-Item README.md staging/
+          Compress-Archive -Path staging/* -DestinationPath "lazylofi-${{ inputs.tag }}-${{ matrix.target }}.zip"
+          Remove-Item -Recurse -Force staging
+
+      - name: Record checksum
+        shell: bash
+        run: sha256sum "lazylofi-${{ inputs.tag }}-${{ matrix.target }}.${{ matrix.archive }}" | tee "lazylofi-${{ inputs.tag }}-${{ matrix.target }}.${{ matrix.archive }}.sha256"
+
+      # Uploading is opt-in so a dry run can prove the build works without
+      # leaving artifacts behind.
+      - name: Upload artifact
+        if: ${{ inputs.upload_artifacts }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: lazylofi-${{ matrix.target }}
+          path: lazylofi-${{ inputs.tag }}-${{ matrix.target }}.*
