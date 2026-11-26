@@ -42,7 +42,7 @@ class Lazylofi < Formula
   end
 
   test do
-    assert_match version.to_s, shell_output("#{bin}/lazylofi --version")
+    assert_match(/\Alazylofi \d+\.\d+\.\d+/, shell_output("#{bin}/lazylofi --version"))
   end
 end
 '''
