@@ -80,6 +80,17 @@ jobs:
       - name: Build (release)
         run: cargo build --release --target ${{ matrix.target }} --locked
 
+      # The tag comes from the manual input; pull request runs have no
+      # inputs and use a clear placeholder instead of an empty name.
+      - name: Resolve archive tag
+        id: archive
+        shell: bash
+        run: |
+          tag="${{ inputs.tag }}"
+          if [ -z "$tag" ]; then tag="v0.0.0-dev"; fi
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+          echo "Archive tag: $tag"
+
       - name: Package (tar.gz)
         if: ${{ matrix.archive == 'tar.gz' }}
         shell: bash
@@ -88,7 +99,7 @@ jobs:
           cp "target/${{ matrix.target }}/release/${{ matrix.binary }}" staging/
           cp LICENSE staging/
           cp README.md staging/
-          tar -C staging -czf "lazylofi-${{ inputs.tag }}-${{ matrix.target }}.tar.gz" .
+          tar -C staging -czf "lazylofi-${{ steps.archive.outputs.tag }}-${{ matrix.target }}.tar.gz" .
           rm -rf staging
 
       - name: Package (zip)
@@ -99,18 +110,18 @@ jobs:
           Copy-Item "target/${{ matrix.target }}/release/${{ matrix.binary }}" staging/
           Copy-Item LICENSE staging/
           Copy-Item README.md staging/
-          Compress-Archive -Path staging/* -DestinationPath "lazylofi-${{ inputs.tag }}-${{ matrix.target }}.zip"
+          Compress-Archive -Path staging/* -DestinationPath "lazylofi-${{ steps.archive.outputs.tag }}-${{ matrix.target }}.zip"
           Remove-Item -Recurse -Force staging
 
       - name: Record checksum
         shell: bash
-        run: sha256sum "lazylofi-${{ inputs.tag }}-${{ matrix.target }}.${{ matrix.archive }}" | tee "lazylofi-${{ inputs.tag }}-${{ matrix.target }}.${{ matrix.archive }}.sha256"
+        run: sha256sum "lazylofi-${{ steps.archive.outputs.tag }}-${{ matrix.target }}.${{ matrix.archive }}" | tee "lazylofi-${{ steps.archive.outputs.tag }}-${{ matrix.target }}.${{ matrix.archive }}.sha256"
 
-      # Uploading is opt-in so a dry run can prove the build works without
-      # leaving artifacts behind.
+      # Uploading can be turned off for a manual dry run. Pull request
+      # runs always upload so the built binaries can be inspected.
       - name: Upload artifact
-        if: ${{ inputs.upload_artifacts }}
+        if: ${{ github.event_name != 'pull_request' && inputs.upload_artifacts == false }} == false
         uses: actions/upload-artifact@v4
         with:
           name: lazylofi-${{ matrix.target }}
-          path: lazylofi-${{ inputs.tag }}-${{ matrix.target }}.*
+          path: lazylofi-${{ steps.archive.outputs.tag }}-${{ matrix.target }}.*
