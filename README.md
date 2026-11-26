@@ -48,19 +48,27 @@ music.
 
 ## Installing
 
-Pick whichever method matches your setup. Homebrew is the smoothest on macOS
-and Linux because it pulls the C build deps for you.
+Pick whichever method matches your setup. Binary installations avoid the Rust
+compiler and native development headers required by source builds.
 
-### Homebrew (macOS, Linux) — recommended
+### Homebrew (macOS, Linux)
 
 ```sh
 brew install federicopinan/tap/lazylofi
 ```
 
 The formula lives in
-[`federicopinan/homebrew-tap`](https://github.com/federicopinan/homebrew-tap)
-and builds from source. On Linux it also installs `alsa-lib` and `openssl@3`
-as build dependencies so you don't need them on the system path.
+[`federicopinan/homebrew-tap`](https://github.com/federicopinan/homebrew-tap).
+Once a binary release has synced to the tap, the formula selects the archive
+for macOS or Linux on Intel x86_64 or ARM64, verifies its SHA256, and installs
+only the `lazylofi` executable. This does not require Cargo, Rust, `pkg-config`,
+or ALSA development headers. Older versions of the formula may build from source.
+
+Linux still needs the **system ALSA runtime** (`libasound.so.2`) and the desktop
+PCM plugins/configuration appropriate to your audio setup (PulseAudio or
+PipeWire). Homebrew ALSA is deliberately not used: it lacks the normal desktop
+PCM plugins. See [Dependencies](#dependencies) for runtime versus source-build
+requirements.
 
 ```sh
 # Update later
@@ -77,6 +85,12 @@ Grab a binary for your platform from the
 put it somewhere on your `$PATH`. Binaries are built on every tag push by the
 GitHub Actions release workflow (Linux x86_64 / aarch64, macOS x86_64 / aarch64,
 Windows x86_64) and shipped with their `LICENSE` and `README`.
+
+Both Linux architectures are built on Ubuntu 24.04 (`ubuntu-24.04` and
+`ubuntu-24.04-arm`). This is the build baseline, not a claim of compatibility
+with older distributions; their glibc and other shared-library requirements
+have not been validated here. macOS builds use `macos-15-intel` (Intel) and
+`macos-15` (ARM64).
 
 ### Cargo
 
@@ -111,30 +125,66 @@ patch something locally and try it before opening a PR.
 
 ## Dependencies
 
-| Platform | What you need | Why |
-|----------|---------------|-----|
-| **macOS** | nothing | Works out of the box. |
-| **Windows** | nothing | Works out of the box. |
-| **Linux** | `alsa-lib`, `openssl`, `pkg-config` (and their `-dev` headers) | `rodio`/`cpal` link against ALSA for audio output; `rustls`/`openssl-sys` need the OpenSSL headers at build time. |
+### Binary installation runtime
 
-Per-distro commands:
+macOS and Windows do not need a Rust toolchain or native development headers
+for a pre-built binary. On Linux, install your distribution's ALSA runtime
+(`alsa-lib` on Arch/Fedora; `libasound2t64` on Ubuntu 24.04), plus the audio
+plugins/configuration used by your desktop. These are system runtime packages,
+not Homebrew ALSA and not `-dev` packages. Other shared-library compatibility
+must be checked against the actual release binary and target distribution.
+
+### Cargo and source builds
+
+These require Rust (plus a native linker/toolchain). On Linux, `rodio`/`cpal`
+also require ALSA development headers and `pkg-config` at build time. The
+current HTTP client uses rustls rather than OpenSSL.
+
+Per-distro source-build commands:
 
 ```sh
 # Arch / Manjaro
-sudo pacman -S alsa-lib openssl pkgconf
+sudo pacman -S alsa-lib pkgconf
 
 # Debian / Ubuntu
-sudo apt install libasound2-dev libssl-dev pkg-config
+sudo apt install libasound2-dev pkg-config
 
 # Fedora
-sudo dnf install alsa-lib-devel openssl-devel pkgconf-pkg-config
+sudo dnf install alsa-lib-devel pkgconf-pkg-config
 ```
 
 If you're using PulseAudio on Linux, also install `pulseaudio-alsa` so the
 default sink lines up with what your desktop mixer expects.
 
-The Homebrew formula and the release workflow's Linux build job install these
-for you; only cargo and source builds need you to set them up by hand.
+The release workflow installs development dependencies on its build runners.
+The binary Homebrew formula does not install them on your machine.
+
+### Formula preparation (maintainers)
+
+The release workflow publishes `checksums.txt` alongside the archives. After
+publication, the token-gated tap job downloads that exact manifest and renders
+the complete formula before cloning the tap. Its existing authentication and
+commit/push flow are unchanged. To render locally from a downloaded manifest:
+
+```sh
+python3 .github/scripts/render_homebrew_formula.py --tag v1.5.9 --checksums checksums.txt
+```
+
+Replace the example tag with the manifest's release tag. The renderer prints
+the formula to stdout; missing, duplicate, malformed hashes or mismatched asset
+versions fail with stderr and no formula output. The Windows asset is ignored.
+This command does not install anything or change a tap.
+
+Offline checks (temporary manifest fixtures, CLI output/errors, and static
+workflow assertions):
+
+```sh
+python3 -B -m unittest discover -s .github/scripts -p test_render_homebrew_formula.py -v
+```
+
+Ruby syntax is checked when Ruby is available; otherwise that test is skipped.
+These checks do not establish Homebrew installation, hosted CI builds, binary
+execution, or working desktop audio.
 
 ## Quick start
 
