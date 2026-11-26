@@ -19,6 +19,9 @@ on:
         type: boolean
         required: false
         default: true
+  # Pull requests run this workflow so the binaries can be verified on
+  # every target platform before anything is published.
+  pull_request:
 
 permissions:
   contents: read
