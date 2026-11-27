@@ -16,9 +16,10 @@ permissions:
 
 jobs:
   # Build a release binary for each target. Each runner builds natively
-  # so there's no cross-toolchain friction. alsa-lib + openssl are pulled
-  # in on Linux because rodio (via cpal) and the rustls dep graph both
-  # need their headers at build time.
+  # so there's no cross-toolchain friction. Linux development packages
+  # stay on the build runners, not in the binary Homebrew formula.
+  # Both Linux architectures use Ubuntu 24.04 as their build baseline;
+  # compatibility with older distributions is not assumed.
   build:
     name: Build (${{ matrix.target }})
     runs-on: ${{ matrix.os }}
@@ -27,7 +28,7 @@ jobs:
       matrix:
         include:
           - target: x86_64-unknown-linux-gnu
-            os: ubuntu-latest
+            os: ubuntu-24.04
             binary: lazylofi
             archive: tar.gz
           - target: aarch64-unknown-linux-gnu
@@ -35,11 +36,11 @@ jobs:
             binary: lazylofi
             archive: tar.gz
           - target: x86_64-apple-darwin
-            os: macos-13
+            os: macos-15-intel
             binary: lazylofi
             archive: tar.gz
           - target: aarch64-apple-darwin
-            os: macos-latest
+            os: macos-15
             binary: lazylofi
             archive: tar.gz
           - target: x86_64-pc-windows-msvc
@@ -147,8 +148,8 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-  # After the release exists, bump the version + SHA in the Homebrew
-  # formula. Skipped when HOMEBREW_TAP_TOKEN is unset so the workflow
+  # After the release exists, render the binary formula from its published
+  # checksums. Skipped when HOMEBREW is unset so the workflow
   # still works for people who don't maintain a tap.
   update-tap:
     name: Update Homebrew tap
@@ -157,51 +158,36 @@ jobs:
     permissions:
       contents: read
     env:
-      TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+      TAP_TOKEN: ${{ secrets.HOMEBREW }}
     steps:
       - name: Skip if tap token missing
         if: ${{ env.TAP_TOKEN == '' }}
         run: |
-          echo "HOMEBREW_TAP_TOKEN is not set; skipping tap update."
+          echo "HOMEBREW is not set; skipping tap update."
           echo "Set it as a repo secret to auto-bump the formula on release."
 
-      - name: Compute source tarball SHA
-        id: src
+      - name: Checkout renderer
         if: ${{ env.TAP_TOKEN != '' }}
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Render binary formula from published checksums
+        if: ${{ env.TAP_TOKEN != '' }}
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         shell: bash
         run: |
-          version="${GITHUB_REF_NAME#v}"
-          curl -sL "https://github.com/${GITHUB_REPOSITORY}/archive/refs/tags/v${version}.tar.gz" -o /tmp/source.tar.gz
-          echo "sha=$(sha256sum /tmp/source.tar.gz | cut -d' ' -f1)" >> "$GITHUB_OUTPUT"
+          gh release download "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --pattern checksums.txt
+          python3 .github/scripts/render_homebrew_formula.py --tag "$GITHUB_REF_NAME" --checksums checksums.txt > lazylofi.rb
+          ruby -c lazylofi.rb
 
       - name: Clone and update formula
         if: ${{ env.TAP_TOKEN != '' }}
-        env:
-          VERSION: ${{ github.ref_name }}
-          SHA: ${{ steps.src.outputs.sha }}
         run: |
           git clone "https://x-access-token:${TAP_TOKEN}@github.com/federicopinan/homebrew-tap.git" tap
-          cd tap
-          new_version="${VERSION#v}"
-          python3 - <<PY
-          import re
-          path = "Formula/lazylofi.rb"
-          with open(path) as f:
-              content = f.read()
-          content = re.sub(
-              r'url "https://github\.com/federicopinan/lazylofi/archive/refs/tags/v[\d.]+\.tar\.gz"',
-              f'url "https://github.com/federicopinan/lazylofi/archive/refs/tags/v{new_version}.tar.gz"',
-              content,
-          )
-          content = re.sub(
-              r'sha256 "[a-f0-9]+"',
-              f'sha256 "{sha}"',
-              content,
-          )
-          with open(path, "w") as f:
-              f.write(content)
-          PY
-          cat Formula/lazylofi.rb
+          cp lazylofi.rb tap/Formula/lazylofi.rb
+          cat tap/Formula/lazylofi.rb
 
       - name: Commit and push
         if: ${{ env.TAP_TOKEN != '' }}
