@@ -59,16 +59,16 @@ brew install federicopinan/tap/lazylofi
 
 The formula lives in
 [`federicopinan/homebrew-tap`](https://github.com/federicopinan/homebrew-tap).
-Once a binary release has synced to the tap, the formula selects the archive
-for macOS or Linux on Intel x86_64 or ARM64, verifies its SHA256, and installs
-only the `lazylofi` executable. This does not require Cargo, Rust, `pkg-config`,
-or ALSA development headers. Older versions of the formula may build from source.
+It selects the release archive for macOS or Linux on Intel x86_64 or ARM64,
+verifies its SHA256, and installs only the `lazylofi` executable. This does not
+require Cargo, Rust, `pkg-config`, or ALSA development headers.
 
 Linux still needs the **system ALSA runtime** (`libasound.so.2`) and the desktop
 PCM plugins/configuration appropriate to your audio setup (PulseAudio or
-PipeWire). Homebrew ALSA is deliberately not used: it lacks the normal desktop
-PCM plugins. See [Dependencies](#dependencies) for runtime versus source-build
-requirements.
+PipeWire). Without it the installed binary fails to start with
+`error while loading shared libraries: libasound.so.2`. Homebrew ALSA is
+deliberately not used: it lacks the normal desktop PCM plugins. See
+[Dependencies](#dependencies) for runtime versus source-build requirements.
 
 ```sh
 # Update later
@@ -129,10 +129,12 @@ patch something locally and try it before opening a PR.
 
 macOS and Windows do not need a Rust toolchain or native development headers
 for a pre-built binary. On Linux, install your distribution's ALSA runtime
-(`alsa-lib` on Arch/Fedora; `libasound2t64` on Ubuntu 24.04), plus the audio
-plugins/configuration used by your desktop. These are system runtime packages,
-not Homebrew ALSA and not `-dev` packages. Other shared-library compatibility
-must be checked against the actual release binary and target distribution.
+(`alsa-lib` on Arch/Fedora; `libasound2t64` on Ubuntu 24.04 or newer), plus the
+audio plugins/configuration used by your desktop. These are system runtime
+packages, not Homebrew ALSA and not `-dev` packages. Without the runtime the
+installed binary cannot start, because it links `libasound.so.2` directly. Other
+shared-library compatibility must be checked against the actual release binary
+and target distribution.
 
 ### Cargo and source builds
 
