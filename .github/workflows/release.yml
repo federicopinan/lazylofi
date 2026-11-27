@@ -149,7 +149,7 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
   # After the release exists, render the binary formula from its published
-  # checksums. Skipped when HOMEBREW_TAP_TOKEN is unset so the workflow
+  # checksums. Skipped when HOMEBREW is unset so the workflow
   # still works for people who don't maintain a tap.
   update-tap:
     name: Update Homebrew tap
@@ -158,12 +158,12 @@ jobs:
     permissions:
       contents: read
     env:
-      TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+      TAP_TOKEN: ${{ secrets.HOMEBREW }}
     steps:
       - name: Skip if tap token missing
         if: ${{ env.TAP_TOKEN == '' }}
         run: |
-          echo "HOMEBREW_TAP_TOKEN is not set; skipping tap update."
+          echo "HOMEBREW is not set; skipping tap update."
           echo "Set it as a repo secret to auto-bump the formula on release."
 
       - name: Checkout renderer

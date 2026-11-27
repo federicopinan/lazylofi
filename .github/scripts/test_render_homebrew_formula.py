@@ -145,7 +145,7 @@ class WorkflowTests(unittest.TestCase):
         self.assertIn('cp lazylofi.rb tap/Formula/lazylofi.rb', tap)
         self.assertNotIn('/archive/refs/tags/', tap)
         self.assertNotIn('Compute source tarball SHA', tap)
-        self.assertIn('TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}', tap)
+        self.assertIn('TAP_TOKEN: ${{ secrets.HOMEBREW }}', tap)
         self.assertEqual(tap.count("if: ${{ env.TAP_TOKEN != '' }}"), 4)
         self.assertIn('https://x-access-token:${TAP_TOKEN}@github.com/federicopinan/homebrew-tap.git', tap)
         self.assertIn('    permissions:\n      contents: read\n', tap)
